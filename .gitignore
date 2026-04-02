@@ -1,0 +1,23 @@
+# Secrets
+.env
+
+# Runtime data
+data/
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Misc
+*.png
+dashboard_error.png
+
+# Claude Code
+.claude/

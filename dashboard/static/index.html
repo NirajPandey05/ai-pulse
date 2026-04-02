@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Pulse Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f3f4f6; color: #111827; min-height: 100vh; }
+
+    /* Layout */
+    .layout { display: flex; height: 100vh; overflow: hidden; }
+    .sidebar { width: 240px; background: #1f2937; color: #f9fafb; display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; }
+    .main { flex: 1; overflow-y: auto; padding: 24px; }
+
+    /* Sidebar */
+    .sidebar-header { padding: 20px 16px 12px; border-bottom: 1px solid #374151; }
+    .sidebar-header h1 { font-size: 18px; font-weight: 700; color: #f9fafb; }
+    .sidebar-header p { font-size: 12px; color: #9ca3af; margin-top: 4px; }
+    .sidebar-list { flex: 1; overflow-y: auto; padding: 8px 0; }
+    .sidebar-item { padding: 10px 16px; cursor: pointer; border-left: 3px solid transparent; transition: all 0.15s; }
+    .sidebar-item:hover { background: #374151; }
+    .sidebar-item.active { background: #374151; border-left-color: #3b82f6; }
+    .sidebar-item .date { font-size: 13px; font-weight: 600; }
+    .sidebar-item .count { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+
+    /* Stats panel */
+    .stats-panel { padding: 12px 16px; border-top: 1px solid #374151; }
+    .stats-panel h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; margin-bottom: 8px; }
+    .stat { display: flex; justify-content: space-between; font-size: 12px; color: #d1d5db; margin-bottom: 4px; }
+    .stat span:last-child { font-weight: 600; color: #f9fafb; }
+
+    /* Main header */
+    .briefing-header { margin-bottom: 20px; }
+    .briefing-header h2 { font-size: 22px; font-weight: 700; }
+    .briefing-meta { font-size: 13px; color: #6b7280; margin-top: 4px; }
+
+    /* Search */
+    .search-bar { margin-bottom: 20px; }
+    .search-bar input { width: 100%; padding: 10px 14px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; outline: none; background: #fff; }
+    .search-bar input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+
+    /* Category tabs */
+    .tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+    .tab { padding: 6px 14px; border-radius: 20px; font-size: 13px; cursor: pointer; border: 1px solid #e5e7eb; background: #fff; transition: all 0.15s; }
+    .tab:hover { background: #f3f4f6; }
+    .tab.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+
+    /* Executive summary */
+    .exec-summary { background: #eff6ff; border-left: 4px solid #3b82f6; padding: 16px; border-radius: 4px; margin-bottom: 20px; font-size: 14px; line-height: 1.7; color: #1e40af; }
+
+    /* Breakthrough section */
+    .breakthrough-section { background: #fef2f2; border: 2px solid #ef4444; border-radius: 8px; padding: 16px; margin-bottom: 20px; }
+    .breakthrough-section h3 { color: #ef4444; margin-bottom: 12px; font-size: 16px; }
+
+    /* Category group */
+    .category-group { margin-bottom: 24px; }
+    .category-title { font-size: 15px; font-weight: 700; color: #374151; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px; margin-bottom: 12px; }
+
+    /* Item card */
+    .item-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+    .item-card-header { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+    .score-badge { padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 700; color: #fff; white-space: nowrap; flex-shrink: 0; margin-top: 2px; }
+    .item-title { font-size: 15px; font-weight: 600; color: #111827; text-decoration: none; }
+    .item-title:hover { color: #3b82f6; }
+    .item-source { font-size: 12px; color: #9ca3af; margin-bottom: 6px; }
+    .item-tldr { font-style: italic; color: #4b5563; font-size: 13px; margin-bottom: 10px; border-left: 3px solid #e5e7eb; padding-left: 10px; }
+    .item-section { margin-bottom: 8px; font-size: 13px; line-height: 1.6; }
+    .item-section strong { color: #374151; }
+    .action-list { margin: 4px 0 0 16px; padding: 0; list-style: disc; }
+    .action-list li { font-size: 13px; color: #374151; margin-bottom: 3px; }
+    .item-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding-top: 10px; border-top: 1px solid #f3f4f6; }
+    .read-more { font-size: 13px; color: #3b82f6; text-decoration: none; }
+    .read-more:hover { text-decoration: underline; }
+    .feedback-btns { display: flex; gap: 6px; }
+    .feedback-btn { background: none; border: 1px solid #e5e7eb; border-radius: 6px; padding: 4px 10px; font-size: 13px; cursor: pointer; transition: all 0.15s; }
+    .feedback-btn:hover { background: #f3f4f6; }
+    .feedback-btn.voted-up { background: #d1fae5; border-color: #10b981; }
+    .feedback-btn.voted-down { background: #fee2e2; border-color: #ef4444; }
+
+    /* Empty state */
+    .empty { text-align: center; color: #9ca3af; padding: 60px 20px; }
+    .empty h3 { font-size: 18px; margin-bottom: 8px; }
+
+    /* Loading */
+    .loading { text-align: center; padding: 60px; color: #6b7280; }
+  </style>
+</head>
+<body>
+<div class="layout">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <h1>🤖 AI Pulse</h1>
+      <p>Daily AI Briefings</p>
+    </div>
+    <div class="sidebar-list" id="sidebar-list">
+      <div class="loading" style="color:#9ca3af;font-size:13px;padding:20px;">Loading...</div>
+    </div>
+    <div class="stats-panel" id="stats-panel"></div>
+  </aside>
+
+  <!-- Main content -->
+  <main class="main">
+    <div id="content"><div class="loading">Loading latest briefing...</div></div>
+  </main>
+</div>
+
+<script>
+  let currentBriefing = null;
+  let activeCategory = 'all';
+  let searchQuery = '';
+  let votes = {};  // item_id -> 1 or -1
+
+  // ── API calls ──────────────────────────────────────────────────────────────
+
+  async function fetchJSON(url) {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  }
+
+  async function loadSidebar() {
+    try {
+      const briefings = await fetchJSON('/api/briefings');
+      const list = document.getElementById('sidebar-list');
+      if (!briefings.length) {
+        list.innerHTML = '<div style="color:#6b7280;font-size:13px;padding:16px;">No briefings yet</div>';
+        return;
+      }
+      list.innerHTML = briefings.map(b => `
+        <div class="sidebar-item" onclick="loadBriefing('${b.date}')" id="sidebar-${b.date}">
+          <div class="date">${b.date}</div>
+          <div class="count">${b.total_items_included} items · ${b.total_items_reviewed} reviewed</div>
+        </div>`).join('');
+    } catch(e) {
+      console.error('Sidebar load failed', e);
+    }
+  }
+
+  async function loadStats() {
+    try {
+      const s = await fetchJSON('/api/stats');
+      const panel = document.getElementById('stats-panel');
+      const topSrc = Object.entries(s.top_sources || {}).map(([k,v]) => `${k}: ${v}`).join(', ');
+      panel.innerHTML = `
+        <h3>All-time stats</h3>
+        <div class="stat"><span>Total reviewed</span><span>${s.total_items_reviewed}</span></div>
+        <div class="stat"><span>Briefings</span><span>${s.total_briefings}</span></div>
+        <div class="stat"><span>Breakthroughs</span><span>${s.breakthrough_count}</span></div>
+      `;
+    } catch(e) {}
+  }
+
+  async function loadBriefing(date) {
+    const url = date === 'latest' ? '/api/briefings/latest' : `/api/briefings/${date}`;
+    try {
+      document.getElementById('content').innerHTML = '<div class="loading">Loading...</div>';
+      currentBriefing = await fetchJSON(url);
+      activeCategory = 'all';
+      searchQuery = '';
+      renderBriefing();
+      // Highlight active sidebar item
+      document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+      const active = document.getElementById(`sidebar-${currentBriefing.date}`);
+      if (active) active.classList.add('active');
+    } catch(e) {
+      document.getElementById('content').innerHTML = `<div class="empty"><h3>Not found</h3><p>${e.message}</p></div>`;
+    }
+  }
+
+  async function sendFeedback(itemId, rating, btnEl) {
+    try {
+      await fetch('/api/feedback', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({item_id: itemId, rating})
+      });
+      votes[itemId] = rating;
+      // Update button styles
+      const card = btnEl.closest('.item-card');
+      card.querySelectorAll('.feedback-btn').forEach(b => {
+        b.classList.remove('voted-up', 'voted-down');
+      });
+      btnEl.classList.add(rating === 1 ? 'voted-up' : 'voted-down');
+    } catch(e) {
+      console.error('Feedback failed', e);
+    }
+  }
+
+  // ── Rendering ──────────────────────────────────────────────────────────────
+
+  function scoreColor(score, isBreakthrough) {
+    if (isBreakthrough) return '#ef4444';
+    if (score >= 9) return '#10b981';
+    if (score >= 7) return '#3b82f6';
+    return '#f59e0b';
+  }
+
+  function renderItem(item) {
+    const color = scoreColor(item.relevance_score, item.is_breakthrough);
+    const label = item.is_breakthrough ? `🔥 ${item.relevance_score.toFixed(1)}` : item.relevance_score.toFixed(1);
+    const actions = (item.action_items || []).map(a => `<li>${a}</li>`).join('');
+    const upClass = votes[item.id] === 1 ? 'voted-up' : '';
+    const downClass = votes[item.id] === -1 ? 'voted-down' : '';
+    return `
+    <div class="item-card" data-id="${item.id}">
+      <div class="item-card-header">
+        <span class="score-badge" style="background:${color}">${label}</span>
+        <a class="item-title" href="${item.url}" target="_blank">${item.title}</a>
+      </div>
+      <div class="item-source">${item.source} · ${item.category}</div>
+      <div class="item-tldr">${item.tldr || ''}</div>
+      ${item.what_it_is ? `<div class="item-section"><strong>What it is:</strong> ${item.what_it_is}</div>` : ''}
+      ${item.why_it_matters ? `<div class="item-section"><strong>Why it matters:</strong> ${item.why_it_matters}</div>` : ''}
+      ${item.impact_on_journey ? `<div class="item-section"><strong>Impact on your journey:</strong> ${item.impact_on_journey}</div>` : ''}
+      ${actions ? `<div class="item-section"><strong>Action items:</strong><ul class="action-list">${actions}</ul></div>` : ''}
+      <div class="item-footer">
+        <a class="read-more" href="${item.url}" target="_blank">Read more →</a>
+        <div class="feedback-btns">
+          <button class="feedback-btn ${upClass}" onclick="sendFeedback('${item.id}', 1, this)">👍</button>
+          <button class="feedback-btn ${downClass}" onclick="sendFeedback('${item.id}', -1, this)">👎</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function getFilteredItems() {
+    if (!currentBriefing) return [];
+    let items = currentBriefing.items || [];
+    if (activeCategory !== 'all') {
+      items = items.filter(i => i.category === activeCategory);
+    }
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      items = items.filter(i =>
+        (i.title || '').toLowerCase().includes(q) ||
+        (i.tldr || '').toLowerCase().includes(q) ||
+        (i.summary || '').toLowerCase().includes(q)
+      );
+    }
+    return items;
+  }
+
+  function renderBriefing() {
+    if (!currentBriefing) return;
+    const b = currentBriefing;
+    const items = getFilteredItems();
+
+    const categories = ['research', 'models_releases', 'tools_products', 'coding_dev'];
+    const catLabels = {
+      'research': 'Research Breakthroughs',
+      'models_releases': 'LLM Models & Releases',
+      'tools_products': 'AI Tools & Products',
+      'coding_dev': 'Coding & Dev'
+    };
+
+    // Tabs
+    const allItems = b.items || [];
+    const catCounts = {};
+    allItems.forEach(i => { catCounts[i.category] = (catCounts[i.category] || 0) + 1; });
+    const tabsHtml = `
+      <div class="tabs">
+        <div class="tab ${activeCategory === 'all' ? 'active' : ''}" onclick="setCategory('all')">All (${allItems.length})</div>
+        ${categories.map(c => catCounts[c] ? `<div class="tab ${activeCategory === c ? 'active' : ''}" onclick="setCategory('${c}')">${catLabels[c]} (${catCounts[c]})</div>` : '').join('')}
+      </div>`;
+
+    // Breakthrough section
+    const breakthroughs = items.filter(i => i.is_breakthrough);
+    const breakthroughHtml = breakthroughs.length ? `
+      <div class="breakthrough-section">
+        <h3>🔥 BREAKTHROUGH ALERT</h3>
+        ${breakthroughs.map(renderItem).join('')}
+      </div>` : '';
+
+    // Category groups — exclude breakthroughs already shown above
+    let categoryGroupsHtml = '';
+    if (activeCategory === 'all') {
+      for (const cat of categories) {
+        const catItems = items.filter(i => i.category === cat && !i.is_breakthrough);
+        if (!catItems.length) continue;
+        categoryGroupsHtml += `
+          <div class="category-group">
+            <div class="category-title">${catLabels[cat]}</div>
+            ${catItems.map(renderItem).join('')}
+          </div>`;
+      }
+    } else {
+      categoryGroupsHtml = items.filter(i => !i.is_breakthrough).map(renderItem).join('');
+    }
+
+    const emptyHtml = items.length === 0 ? `<div class="empty"><h3>No items found</h3><p>Try adjusting your search or filter.</p></div>` : '';
+
+    document.getElementById('content').innerHTML = `
+      <div class="briefing-header">
+        <h2>AI Pulse — ${b.date}</h2>
+        <div class="briefing-meta">${b.total_items_included} items included · ${b.total_items_reviewed} reviewed</div>
+      </div>
+
+      <div class="search-bar">
+        <input type="text" id="search-input" placeholder="Search items by title or summary..." value="${searchQuery}"
+          oninput="setSearch(this.value)">
+      </div>
+
+      ${b.executive_summary ? `<div class="exec-summary">${b.executive_summary}</div>` : ''}
+
+      ${tabsHtml}
+      ${breakthroughHtml}
+      ${categoryGroupsHtml}
+      ${emptyHtml}
+    `;
+  }
+
+  function setCategory(cat) {
+    activeCategory = cat;
+    renderBriefing();
+  }
+
+  function setSearch(q) {
+    searchQuery = q;
+    renderBriefing();
+  }
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+
+  async function init() {
+    await Promise.all([loadSidebar(), loadStats()]);
+    await loadBriefing('latest');
+  }
+
+  init();
+</script>
+</body>
+</html>
