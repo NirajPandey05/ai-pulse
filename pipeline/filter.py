@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from google import genai
 from google.genai import types
@@ -111,15 +112,25 @@ def filter_items(items: list[AggregatedItem]) -> tuple[list, dict, dict]:
     all_scores: dict[str, float] = {}
     all_meta: dict[str, dict] = {}
 
-    for i, batch in enumerate(batches):
-        logger.info(f"Filter: scoring batch {i + 1}/{len(batches)} ({len(batch)} items)")
-        results = _call_gemini(client, batch)
-        for item_id, data in results.items():
-            all_scores[item_id] = data["score"]
-            all_meta[item_id] = {
-                "is_breakthrough": data["is_breakthrough"],
-                "one_line_reason": data["one_line_reason"],
-            }
+    logger.info(f"Filter: scoring {len(batches)} batch(es) with {config.GEMINI_FILTER_WORKERS} workers")
+
+    def _score_batch(batch_index: int, batch: list) -> dict:
+        logger.info(f"Filter: scoring batch {batch_index + 1}/{len(batches)} ({len(batch)} items)")
+        return _call_gemini(client, batch)
+
+    with ThreadPoolExecutor(max_workers=config.GEMINI_FILTER_WORKERS) as executor:
+        futures = {
+            executor.submit(_score_batch, i, batch): i
+            for i, batch in enumerate(batches)
+        }
+        for future in as_completed(futures):
+            results = future.result()
+            for item_id, data in results.items():
+                all_scores[item_id] = data["score"]
+                all_meta[item_id] = {
+                    "is_breakthrough": data["is_breakthrough"],
+                    "one_line_reason": data["one_line_reason"],
+                }
 
     threshold = config.RELEVANCE_THRESHOLD
     passing = [item for item in items if all_scores.get(item.id, 0) >= threshold]

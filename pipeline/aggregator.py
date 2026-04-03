@@ -151,12 +151,16 @@ def fetch_huggingface_papers() -> list[AggregatedItem]:
         soup = BeautifulSoup(resp.text, "html.parser")
         items = []
         for article in soup.select("article")[:15]:
-            a = article.find("a", href=True)
+            # First <a> is a thumbnail with no text; title lives in the heading
+            heading = article.find(["h1", "h2", "h3", "h4"])
+            title = heading.get_text(strip=True) if heading else ""
+            if not title:
+                continue
+            a = article.find("a", href=lambda h: h and h.startswith("/papers/"))
             if not a:
                 continue
             href = a["href"]
-            url = href if href.startswith("http") else f"https://huggingface.co{href}"
-            title = a.get_text(strip=True)
+            url = f"https://huggingface.co{href}"
             summary = _truncate(article.get_text(" ", strip=True))
             items.append(AggregatedItem(
                 id=_make_id(url),

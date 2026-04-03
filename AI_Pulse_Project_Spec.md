@@ -11,17 +11,17 @@ The system is built for someone actively on an AI learning journey — focused o
 
 ## How It Works (Brief)
 
-A Python pipeline runs daily in five sequential layers:
+A Python pipeline runs daily in five layers, with concurrency applied at the I/O-bound stages:
 
 ```
-Data Sources → Aggregator → Claude Relevance Filter → Claude Impact Analyzer → Briefing Assembly → Email + Dashboard
+Data Sources → Aggregator → Gemini Relevance Filter → Gemini Impact Analyzer → Briefing Assembly → Email + Dashboard
 ```
 
-- **Layer 1 — Aggregator**: Scrapes RSS feeds, blogs, HN, GitHub Trending into a normalized item list
-- **Layer 2 — Relevance Filter**: Batches items to Claude API, scores 1-10, drops anything below threshold (default 6)
-- **Layer 3 — Impact Analyzer**: Per-item Claude call producing personalized what/why/impact/actions breakdown
-- **Layer 4 — Briefing Assembly**: Final Claude call for executive summary, items ranked and grouped by category
-- **Layer 5 — Delivery**: Sends HTML email via Gmail SMTP, saves JSON briefing, serves via FastAPI dashboard
+- **Layer 1 — Aggregator**: Scrapes RSS feeds, blogs, HN, GitHub Trending into a normalized item list. All 13 sources fetched concurrently via `ThreadPoolExecutor` (8 workers).
+- **Layer 2 — Relevance Filter**: Batches items into groups of 20 for Gemini API scoring. Batches are sent concurrently via `ThreadPoolExecutor` (3 workers by default). Drops anything below threshold (default 6).
+- **Layer 3 — Impact Analyzer**: Per-item Gemini call producing personalized what/why/impact/actions breakdown. All items processed concurrently via `ThreadPoolExecutor` (5 workers by default).
+- **Layer 4 — Briefing Assembly**: Single Gemini call for executive summary, items ranked and grouped by category.
+- **Layer 5 — Delivery**: Sends HTML email via Gmail SMTP, saves JSON briefing, serves via FastAPI dashboard.
 
 ---
 
@@ -61,9 +61,10 @@ All sources are public and require no authentication unless noted. Each has a da
 
 - Use `httpx` for all HTTP requests, `BeautifulSoup4` for HTML parsing
 - Set `User-Agent: Mozilla/5.0` header on all requests
-- Add 1-second delay between requests to the same domain
+- Thread-safe per-domain rate limiter: enforce 1-second minimum delay between requests to the same domain
 - Timeout all requests at 10 seconds
 - If any source fails (network error, parse error): log WARNING, skip that source, continue pipeline — never abort
+- **HuggingFace Papers**: the first `<a>` in each article is a thumbnail (empty text). Extract title from the article's heading tag (`<h3>`/`<h4>`), then find the `/papers/` anchor for the URL.
 
 ### 1.5 Normalized Item Schema
 
@@ -105,9 +106,9 @@ CREATE TABLE seen_items (
 
 ## 3. Relevance Filter — Claude API (Layer 2)
 
-Items not in `seen_items` are sent to Claude for relevance scoring. Use **batches of 20 items per API call** to minimize API usage. Expected ~5-7 API calls per day for this layer.
+Items not in `seen_items` are sent to Gemini for relevance scoring. Use **batches of 20 items per API call** to minimize API usage. Batches are scored concurrently (default 3 workers). Expected ~5-7 API calls per day for this layer.
 
-**Model to use for all Claude API calls in this project**: `claude-sonnet-4-20250514`
+**Model to use for all Gemini API calls in this project**: `gemini-2.5-pro`
 
 ### 3.1 System Prompt (use verbatim)
 
@@ -145,9 +146,9 @@ Items with `score >= 6` proceed to Impact Analyzer. Items below are recorded in 
 
 ---
 
-## 4. Impact Analyzer — Claude API (Layer 3)
+## 4. Impact Analyzer — Gemini API (Layer 3)
 
-Each item that passed the filter gets its own Claude API call for deep personalized analysis. These are NOT batched — one call per item.
+Each item that passed the filter gets its own Gemini API call for deep personalized analysis. Calls are not batched — one call per item — but are executed concurrently via `ThreadPoolExecutor` (default 5 workers). Items that fail analysis after one retry are skipped silently.
 
 ### 4.1 User Profile (hardcoded in config.py, editable by user)
 
@@ -266,7 +267,7 @@ Send via Gmail SMTP using Python's `smtplib`. All credentials from environment v
 
 | Variable | Description |
 |---|---|
-| `ANTHROPIC_API_KEY` | Anthropic API key |
+| `GOOGLE_API_KEY` | Google AI Studio / Gemini API key |
 | `GMAIL_USER` | Sender Gmail address (used as SMTP login) |
 | `GMAIL_APP_PASSWORD` | Gmail App Password — NOT the account password. User generates this in Google Account → Security → 2-Step Verification → App Passwords |
 | `RECIPIENT_EMAIL` | Destination email (can be same as GMAIL_USER) |
@@ -390,7 +391,7 @@ Pin to latest stable versions at time of creation:
 
 | Package | Purpose |
 |---|---|
-| `anthropic` | Official Anthropic Python SDK |
+| `google-genai` | Official Google Gemini Python SDK |
 | `httpx` | HTTP client for scraping and API calls |
 | `beautifulsoup4` | HTML parsing for scraped pages |
 | `feedparser` | RSS/Atom feed parsing |
@@ -400,7 +401,9 @@ Pin to latest stable versions at time of creation:
 | `python-dotenv` | Load .env into environment |
 | `jinja2` | HTML templating (also FastAPI dependency) |
 
-> **Important**: Do NOT use async/await anywhere in the pipeline — keep everything synchronous for simplicity. FastAPI route handlers can also be sync (`def` not `async def`).
+Dependencies are managed with `uv` (`pyproject.toml` + `uv sync`). Use `uv run python main.py` to execute.
+
+> **Concurrency model**: The pipeline uses `threading.ThreadPoolExecutor` for I/O-bound parallelism (HTTP scraping in Layer 1, Gemini API calls in Layers 2 and 3). No `async/await` — all code is synchronous within each thread. FastAPI route handlers are also sync (`def`, not `async def`).
 
 ---
 
@@ -409,12 +412,15 @@ Pin to latest stable versions at time of creation:
 Every value a user might want to tune must be here with inline comments:
 
 ```python
-# === Claude API ===
-ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
+# === Gemini API ===
+GEMINI_MODEL = "gemini-2.5-pro"
+GEMINI_ANALYSIS_WORKERS = 5   # Concurrent per-item Gemini calls in Layer 3 (reduce if hitting rate limits)
+GEMINI_FILTER_WORKERS = 3     # Concurrent batch Gemini calls in Layer 2
 
 # === Relevance Filter ===
 RELEVANCE_THRESHOLD = 6.0       # Items scoring below this are dropped (scale 1-10)
 MAX_ITEMS_PER_BRIEFING = 20     # Cap on total items in one briefing
+LOOKBACK_DAYS = 3               # Only include items published within this many days
 
 # === Scheduling ===
 BRIEFING_SEND_TIME = "07:00"    # 24h format, local time

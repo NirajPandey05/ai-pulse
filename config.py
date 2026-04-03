@@ -1,5 +1,7 @@
 # === Gemini API ===
 GEMINI_MODEL = "gemini-2.5-pro"
+GEMINI_ANALYSIS_WORKERS = 5   # Concurrent per-item Gemini calls in Layer 3 (analyzer)
+GEMINI_FILTER_WORKERS = 3     # Concurrent batch Gemini calls in Layer 2 (filter)
 
 # === Relevance Filter ===
 RELEVANCE_THRESHOLD = 6.0       # Items scoring below this are dropped (scale 1-10)
